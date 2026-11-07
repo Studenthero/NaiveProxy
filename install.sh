@@ -22,16 +22,14 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # 检测架构
 ARCH=$(uname -m)
 case $ARCH in
-    x86_64)  BINARY="caddy" ;;
-    aarch64) BINARY="caddy" ;;
+    x86_64|aarch64) BINARY="caddy" ;;
     *) error "不支持的架构: $ARCH"; exit 1 ;;
 esac
 
 # 获取最新 Release 下载链接
 get_latest_download_url() {
     local api_url="https://api.github.com/repos/${REPO}/releases/latest"
-    local asset_name="$BINARY"
-    curl -fsSL "$api_url" | grep -o "\"browser_download_url\": *\"[^\"]*${asset_name}\"" | head -1 | cut -d'"' -f4
+    curl -fsSL "$api_url" | grep -o "\"browser_download_url\": *\"[^\"]*${BINARY}\"" | head -1 | cut -d'"' -f4
 }
 
 # 下载二进制
@@ -64,93 +62,138 @@ EOF
     systemctl daemon-reload
 }
 
-# 交互式配置（首次安装时）
-interactive_config() {
-    local domain port username password cert_path key_path
+# 生成 naive.json（根据参数）
+generate_config() {
+    local domain="$1"
+    local port="$2"
+    local auth="$3"
+    local cert_mode="$4"   # "acme" 或 "custom"
+    local cert_path="$5"
+    local key_path="$6"
+    local email="$7"
+    local ssl_issuer="$8"  # "zerossl" 或 "letsencrypt"
 
-    echo ""
-    info "配置 NaiveProxy（直接回车使用默认值）"
-    read -p "  域名 [la.8888981.xyz]: " domain
-    domain="${domain:-la.8888981.xyz}"
+    # 根据证书方式生成不同的 tls 配置
+    local tls_config
+    if [ "$cert_mode" = "acme" ]; then
+        tls_config=$(cat << TLEOF
+    "tls": {
+      "certificates": {
+        "automate": ["${domain}"]
+      },
+      "automation": {
+        "policies": [
+          {
+            "issuers": [
+              {
+                "module": "${ssl_issuer}",
+                "email": "${email}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+TLEOF
+)
+    else
+        tls_config=$(cat << TLEOF
+    "tls": {
+      "certificates": {
+        "load_files": [
+          {
+            "certificate": "${cert_path}",
+            "key": "${key_path}"
+          }
+        ]
+      }
+    }
+TLEOF
+)
+    fi
 
-    read -p "  端口 [8443]: " port
-    port="${port:-8443}"
-
-    read -p "  用户名 [ID5E6B9]: " username
-    username="${username:-ID5E6B9}"
-
-    read -p "  密码 [R57SBS]: " password
-    password="${password:-R57SBS}"
-
-    read -p "  证书路径 [/etc/naive/certs/cert.crt]: " cert_path
-    cert_path="${cert_path:-/etc/naive/certs/cert.crt}"
-
-    read -p "  密钥路径 [/etc/naive/certs/private.key]: " key_path
-    key_path="${key_path:-/etc/naive/certs/private.key}"
-
-    # 生成 base64 认证
-    local auth
-    auth=$(echo -n "${username}:${password}" | base64)
-
-    # 生成 naive.json
-    cat > "$CONFIG_FILE" << EOF
+    cat > "$CONFIG_FILE" << CONFEOF
 {
-  "admin": { "disabled": true },
-  "logging": {
-    "sink": { "writer": { "output": "stderr" } },
-    "logs": { "default": { "writer": { "output": "stderr" } } }
+  "admin": {
+    "disabled": true
   },
-  "storage": { "module": "file_system", "root": "${INSTALL_DIR}/file_system/" },
+  "logging": {
+    "sink": {
+      "writer": {
+        "output": "stderr"
+      }
+    },
+    "logs": {
+      "default": {
+        "writer": {
+          "output": "stderr"
+        }
+      }
+    }
+  },
+  "storage": {
+    "module": "file_system",
+    "root": "${INSTALL_DIR}/file_system/"
+  },
   "apps": {
     "http": {
       "servers": {
         "srv0": {
           "listen": [":${port}"],
-          "protocols": ["http1", "http2"],
-          "routes": [{
-            "handle": [{
-              "handler": "subroute",
-              "routes": [
-                { "handle": [{
-                    "auth_credentials": ["${auth}"],
-                    "handler": "forward_proxy",
-                    "hide_ip": true,
-                    "hide_via": true,
-                    "probe_resistance": {}
-                }] },
-                { "match": [{ "host": ["${domain}"] }],
-                  "handle": [
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "subroute",
+                  "routes": [
                     {
-                      "handler": "header",
-                      "strip": ["Server", "Alt-Svc"]
+                      "handle": [
+                        {
+                          "auth_credentials": ["${auth}"],
+                          "handler": "forward_proxy",
+                          "hide_ip": true,
+                          "hide_via": true,
+                          "probe_resistance": {}
+                        }
+                      ]
                     },
                     {
-                      "handler": "file_server",
-                      "root": "${HTML_DIR}/",
-                      "index_names": ["index.html", "index.htm"]
+                      "match": [
+                        {
+                          "host": ["${domain}"]
+                        }
+                      ],
+                      "handle": [
+                        {
+                          "handler": "file_server",
+                          "root": "${HTML_DIR}/",
+                          "index_names": ["index.html", "index.htm"]
+                        }
+                      ],
+                      "terminal": true
                     }
-                  ],
-                  "terminal": true
+                  ]
                 }
               ]
-            }]
-          }],
-          "tls_connection_policies": [{ "match": { "sni": ["${domain}"] } }],
-          "automatic_https": { "disable": true }
+            }
+          ],
+          "tls_connection_policies": [
+            {
+              "match": {
+                "sni": ["${domain}"]
+              }
+            }
+          ],
+          "automatic_https": {
+            "disable": true
+          }
         }
       }
     },
-    "tls": {
-      "certificates": {
-        "load_files": [{
-          "certificate": "${cert_path}",
-          "key": "${key_path}"
-        }]
-      }
-    }
+${tls_config}
   }
 }
-EOF
+CONFEOF
     info "配置已写入: $CONFIG_FILE"
 }
 
@@ -161,6 +204,78 @@ setup_html() {
         warn "已创建伪装站点目录: $HTML_DIR"
         warn "请放入你的 index.html（不要留空，否则返回 404）"
     fi
+}
+
+# 交互式配置
+interactive_config() {
+    local domain port username password cert_mode cert_path key_path email ssl_issuer
+
+    echo ""
+    echo "============================================"
+    echo "  NaiveProxy 配置（直接回车使用默认值）"
+    echo "============================================"
+    echo ""
+
+    read -p "  域名: " domain
+    if [ -z "$domain" ]; then
+        error "域名不能为空"
+        exit 1
+    fi
+
+    read -p "  端口 [8443]: " port
+    port="${port:-8443}"
+
+    read -p "  用户名: " username
+    if [ -z "$username" ]; then
+        error "用户名不能为空"
+        exit 1
+    fi
+
+    read -p "  密码: " password
+    if [ -z "$password" ]; then
+        error "密码不能为空"
+        exit 1
+    fi
+
+    echo ""
+    echo "  证书方式:"
+    echo "    1) 自动生成（ACME，域名需已解析到本机 IP）"
+    echo "    2) 自定义证书（手动指定 cert/key 路径）"
+    read -p "  选择 [1/2] [1]: " cert_choice
+    cert_choice="${cert_choice:-1}"
+
+    if [ "$cert_choice" = "1" ]; then
+        cert_mode="acme"
+        read -p "  签发机构 (zerossl/letsencrypt) [zerossl]: " ssl_issuer
+        ssl_issuer="${ssl_issuer:-zerossl}"
+        read -p "  邮箱（用于 ACME 注册）: " email
+        if [ -z "$email" ]; then
+            error "ACME 模式必须提供邮箱"
+            exit 1
+        fi
+        cert_path=""
+        key_path=""
+    else
+        cert_mode="custom"
+        read -p "  证书路径 (cert.crt): " cert_path
+        if [ -z "$cert_path" ] || [ ! -f "$cert_path" ]; then
+            error "证书文件不存在: $cert_path"
+            exit 1
+        fi
+        read -p "  密钥路径 (private.key): " key_path
+        if [ -z "$key_path" ] || [ ! -f "$key_path" ]; then
+            error "密钥文件不存在: $key_path"
+            exit 1
+        fi
+        ssl_issuer=""
+        email=""
+    fi
+
+    # 生成 base64 认证
+    local auth
+    auth=$(echo -n "${username}:${password}" | base64)
+
+    generate_config "$domain" "$port" "$auth" "$cert_mode" "$cert_path" "$key_path" "$email" "$ssl_issuer"
 }
 
 # 主逻辑
@@ -185,7 +300,7 @@ main() {
     url=$(get_latest_download_url)
     if [ -z "$url" ]; then
         error "无法获取最新 Release 下载链接"
-        error "请确认仓库 ${REPO} 有 Release 且包含文件: $BINARY"
+        error "请确认仓库 ${REPO} 有 Release 且包含文件: ${BINARY}"
         exit 1
     fi
 
@@ -196,7 +311,7 @@ main() {
         mv "$INSTALL_DIR/naive" "${INSTALL_DIR}/naive.bak"
     fi
     mv "${INSTALL_DIR}/naive.new" "${INSTALL_DIR}/naive"
-    info "二进制已更新: $(./${INSTALL_DIR}/naive version 2>/dev/null || echo 'version unknown')"
+    info "二进制已更新: $(./${INSTALL_DIR}/naive version 2>/dev/null | awk '{print $1}' || echo 'unknown')"
 
     # 写 systemd
     write_service
@@ -206,7 +321,7 @@ main() {
         info "首次安装，进入配置"
         interactive_config
     else
-        info "已有配置文件，跳过（如需重新配置请删除 $CONFIG_FILE 后重跑）"
+        info "已有配置文件，跳过（如需重新配置请删除 ${CONFIG_FILE} 后重跑）"
     fi
 
     # 伪装站点
@@ -219,21 +334,21 @@ main() {
 
     if systemctl is-active --quiet naive; then
         info "✅ NaiveProxy 运行正常"
-        local port
-        port=$(grep -oP '":\K[0-9]+' "$CONFIG_FILE" | head -1)
-        local domain
-        domain=$(grep -oP '"host":\s*\[\s*"\K[^"]+' "$CONFIG_FILE" | head -1)
         echo ""
-        info "验证: curl -skI https://${domain}:${port}"
-        curl -skI "https://${domain}:${port}" 2>/dev/null | head -3
+        info "验证: curl -skI https://<你的域名>:<端口>"
     else
-        error "❌ 服务启动失败，查看日志: journalctl -u naive -n 20"
-        systemctl status naive
-        # 回滚
+        error "❌ 服务启动失败"
+        warn "查看日志: journalctl -u naive -n 20"
+        warn "自动回滚到旧版本..."
         if [ -f "${INSTALL_DIR}/naive.bak" ]; then
-            warn "回滚到旧版本"
             mv "${INSTALL_DIR}/naive.bak" "${INSTALL_DIR}/naive"
             systemctl restart naive
+            sleep 2
+            if systemctl is-active --quiet naive; then
+                info "已回滚到旧版本，服务恢复"
+            else
+                error "回滚后仍失败，请手动排查"
+            fi
         fi
         exit 1
     fi

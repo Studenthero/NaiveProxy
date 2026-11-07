@@ -2,6 +2,8 @@ name: Build NaiveProxy
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'
 
 jobs:
   build:
@@ -28,7 +30,21 @@ jobs:
           export PATH=$PATH:$(go env GOPATH)/bin
           echo "tag=$(./caddy version | awk '{print $1}')" >> $GITHUB_OUTPUT
 
+      - name: Check if version already released
+        id: check
+        run: |
+          if gh release view "${{ steps.ver.outputs.tag }}" > /dev/null 2>&1; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "版本 ${{ steps.ver.outputs.tag }} 已存在，跳过"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "新版本 ${{ steps.ver.outputs.tag }}，继续发布"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Release
+        if: steps.check.outputs.skip == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}

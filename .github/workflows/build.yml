@@ -6,6 +6,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Install Go
         uses: actions/setup-go@v5
@@ -20,8 +22,15 @@ jobs:
           export PATH=$PATH:$(go env GOPATH)/bin
           xcaddy build --with github.com/caddyserver/forwardproxy=github.com/klzgrad/forwardproxy@naive
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Get Caddy version
+        id: ver
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+          echo "tag=$(./caddy version | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: naive-linux-amd64
-          path: caddy   
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: NaiveProxy ${{ steps.ver.outputs.tag }}
+          files: caddy   

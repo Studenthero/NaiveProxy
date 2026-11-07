@@ -201,10 +201,71 @@ CONFEOF
 setup_html() {
     if [ ! -d "$HTML_DIR" ]; then
         mkdir -p "$HTML_DIR"
-        warn "已创建伪装站点目录: $HTML_DIR"
-        warn "请放入你的 index.html（不要留空，否则返回 404）"
     fi
-}
+
+    # 如果没有 index.html，生成默认页面
+    if [ ! -f "${HTML_DIR}/index.html" ]; then
+        cat > "${HTML_DIR}/index.html" << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1e293b;line-height:1.6}
+a{text-decoration:none;color:inherit}
+nav{background:#0f172a;padding:1rem 2.5rem;display:flex;justify-content:space-between;align-items:center}
+.logo{color:#fff;font-size:1.25rem;font-weight:700}
+.nav-links{display:flex;gap:2rem}
+.nav-links a{color:#94a3b8;font-size:.9rem}
+.nav-links a:hover{color:#fff}
+.hero{background:linear-gradient(180deg,#0f172a 0%,#1e1b4b 100%);padding:5rem 2.5rem 4rem;text-align:center;color:#fff}
+.hero h1{font-size:2.5rem;font-weight:800;max-width:600px;margin:0 auto 1rem;line-height:1.2}
+.hero p{font-size:1.05rem;color:#94a3b8;max-width:480px;margin:0 auto 2rem}
+.btn{display:inline-block;background:#6366f1;color:#fff;padding:.75rem 2rem;border-radius:8px;font-weight:600;font-size:.95rem}
+.features{padding:4rem 2.5rem;max-width:900px;margin:0 auto}
+.features h2{text-align:center;font-size:1.8rem;font-weight:700;margin-bottom:2rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1.5rem}
+.card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:1.5rem}
+.card h3{font-size:1rem;font-weight:600;margin-bottom:.5rem}
+.card p{font-size:.85rem;color:#64748b}
+footer{background:#0f172a;color:#64748b;text-align:center;padding:2rem;font-size:.8rem}
+@media(max-width:768px){.nav-links{display:none}.hero h1{font-size:1.8rem}}
+</style>
+</head>
+<body>
+<nav>
+<div class="logo">Acme Studio</div>
+<div class="nav-links">
+<a href="#">Services</a>
+<a href="#">Work</a>
+<a href="#">About</a>
+<a href="#">Contact</a>
+</div>
+</nav>
+<div class="hero">
+<h1>Digital products that matter</h1>
+<p>Acme Studio is a small team helping startups launch polished web experiences.</p>
+<a href="#" class="btn">Get in Touch</a>
+</div>
+<div class="features">
+<h2>What We Do</h2>
+<div class="grid">
+<div class="card"><h3>Web Development</h3><p>Custom websites and applications built with modern frameworks. Performance-first and accessible.</p></div>
+<div class="card"><h3>Brand Design</h3><p>Logos, design systems, and visual identity that make your product stand out.</p></div>
+<div class="card"><h3>Ongoing Support</h3><p>Monthly retainers for updates, monitoring, and iterative improvements after launch.</p></div>
+</div>
+</div>
+<footer>&copy; 2025 Acme Studio. All rights reserved.</footer>
+</body>
+</html>
+HTMLEOF
+        info "已生成默认伪装页面: ${HTML_DIR}/index.html"
+        warn "建议替换为你自己的页面以获得更好的伪装效果"
+    fi
+}   
 
 # 交互式配置
 interactive_config() {

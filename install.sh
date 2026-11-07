@@ -2,7 +2,7 @@
 set -e
 
 # ==================== 配置区 ====================
-REPO="你的用户名/NaiveProxy"
+REPO="Studenthero/NaiveProxy"
 INSTALL_DIR="/usr/local/naive"
 SERVICE_FILE="/etc/systemd/system/naive.service"
 CONFIG_FILE="${INSTALL_DIR}/naive.json"
